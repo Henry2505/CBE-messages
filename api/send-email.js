@@ -1,20 +1,43 @@
 // File: api/send-email.js
 
+// Allow CORS from any origin
+const ALLOWED_ORIGINS = ["*"];
+
 export default async function handler(req, res) {
-  // Only accept POST requests
+  // 1. Handle CORS preflight (OPTIONS)
+  if (req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGINS.join(","));
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    return res.status(204).end(); // No Content
+  }
+
+  // 2. All responses (for non-OPTIONS) must include CORS headers
+  res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGINS.join(","));
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  // 3. Only accept POST
   if (req.method !== "POST") {
     return res.status(405).json({ message: "Only POST allowed" });
   }
 
-  const { email, name } = req.body;
+  // 4. Parse and validate request body
+  let body;
+  try {
+    body = req.body;
+  } catch (err) {
+    return res.status(400).json({ message: "Invalid JSON" });
+  }
 
-  // Validate required fields
+  const { email, name } = body || {};
+
   if (!email || !name) {
     return res.status(400).json({ message: "Missing email or name" });
   }
 
+  // 5. Send email via Brevo
   try {
-    // Send email via Brevo REST API
     const brevoRes = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: {
@@ -27,8 +50,8 @@ export default async function handler(req, res) {
           name: "Bullion Exchange",
           email: "noreply@apexincomeoptions.com.ng"
         },
-        to: [{ email: email, name: name }],
-        templateId: 4,       // ← Your Brevo template ID
+        to: [{ email, name }],
+        templateId: 4,       // Your Brevo template ID
         params: { NAME: name }
       })
     });
@@ -36,7 +59,7 @@ export default async function handler(req, res) {
     const data = await brevoRes.json();
 
     if (!brevoRes.ok) {
-      // If Brevo returned an error, forward it
+      // Brevo returned an error—forward it
       return res.status(500).json({ message: "Brevo API error", details: data });
     }
 
